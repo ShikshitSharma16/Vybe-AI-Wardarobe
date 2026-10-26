@@ -1,0 +1,457 @@
+
+import { StyleSheet, Text, View, ScrollView, Pressable, Image, TextInput, Alert, } from 'react-native';
+import {useState} from 'react';
+import { StatusBar } from 'expo-status-bar';
+import * as ImagePicker from 'expo-image-picker';
+
+type ClothingItem = {
+  id: string;
+  image: string;
+  name: string;
+  category: string;
+  color: string;
+};
+export default function HomeScreen() {
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [clothingName, setClothingName] = useState('');
+  const [category, setCategory] = useState('');
+  const [color, setColor] = useState('');
+  const [wardrobe, setWardrobe] = useState<ClothingItem[]>([]);
+
+
+  const openGallery = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets.length > 0) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
+  const saveClothing = () => {
+  if (!selectedImage || !clothingName.trim() || !category.trim() || !color.trim()) {
+    Alert.alert('Missing details', 'Please select a photo and fill in all fields.');
+    return;
+  }
+
+  const newItem: ClothingItem = {
+    id: Date.now().toString(),
+    image: selectedImage,
+    name: clothingName.trim(),
+    category: category.trim(),
+    color: color.trim(),
+  };
+
+  setWardrobe((currentWardrobe) => [...currentWardrobe, newItem]);
+
+  setSelectedImage(null);
+  setClothingName('');
+  setCategory('');
+  setColor('');
+
+  Alert.alert('Success', 'Clothing item added to your wardrobe!');
+};
+  return (
+    <View style={styles.container}>
+      <StatusBar style="dark" />
+
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* App branding */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.logo}>VYBE</Text>
+            <Text style={styles.tagline}>YOUR STYLE, INTELLIGENTLY.</Text>
+          </View>
+
+          <View style={styles.profileCircle}>
+            <Text style={styles.profileText}>V</Text>
+          </View>
+        </View>
+
+        {/* Welcome section */}
+        <View style={styles.welcome}>
+          <Text style={styles.eyebrow}>YOUR PERSONAL WARDROBE</Text>
+          <Text style={styles.heading}>Dress well.</Text>
+          <Text style={styles.headingAccent}>Feel confident.</Text>
+          <Text style={styles.description}>
+            Discover outfits, organise your clothes, and find your style.
+          </Text>
+        </View>
+
+        {/* Main action */}
+        <Pressable
+          style={styles.primaryButton}
+          onPress={openGallery}
+        >
+          <Text style={styles.primaryButtonText}>+  Add your clothes</Text>
+        </Pressable>
+        {selectedImage && (
+          <View style={styles.imagePreviewCard}>
+          <Text style={styles.imagePreviewTitle}>Add clothing details</Text>
+
+          <Image
+            source={{ uri: selectedImage }}
+            style={styles.selectedImage}
+            resizeMode="cover"
+            />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Clothing name (e.g. Blue Shirt)"
+            value={clothingName}
+            onChangeText={setClothingName}
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Category (e.g. Shirt, Jeans, Shoes)"
+            value={category}
+            onChangeText={setCategory}
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Color (e.g. Blue)"
+            value={color}
+            onChangeText={setColor}
+          />
+
+          <Pressable style={styles.saveButton} onPress={saveClothing}>
+            <Text style={styles.saveButtonText}>Save to Wardrobe</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Wardrobe summary */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Your wardrobe</Text>
+          <Text style={styles.mutedText}>YOUR COLLECTION</Text>
+        </View>
+
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryIcon}>
+            <Text style={styles.iconText}>✦</Text>
+          </View>
+
+          <Text style={styles.summaryNumber}>{wardrobe.length} items</Text>
+          <Text style={styles.summaryDescription}>
+            Your wardrobe starts here.
+            {'\n'}Add your clothes to get started.
+          </Text>
+        </View>
+        {wardrobe.map((item) => (
+  <View key={item.id} style={styles.wardrobeItemCard}>
+    <Image
+      source={{ uri: item.image }}
+      style={styles.wardrobeItemImage}
+    />
+
+    <View style={styles.wardrobeItemDetails}>
+      <Text style={styles.wardrobeItemName}>{item.name}</Text>
+      <Text style={styles.wardrobeItemText}>Category: {item.category}</Text>
+      <Text style={styles.wardrobeItemText}>Color: {item.color}</Text>
+    </View>
+  </View>
+))}
+
+        {/* Outfit recommendations */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Outfit inspiration</Text>
+          <Text style={styles.mutedText}>FOR YOU</Text>
+        </View>
+
+        <View style={styles.recommendationCard}>
+          <View style={styles.recommendationIcon}>
+            <Text style={styles.outfitIcon}>◈</Text>
+          </View>
+
+          <Text style={styles.recommendationTitle}>
+            Your next look starts here
+          </Text>
+          <Text style={styles.recommendationDescription}>
+            Add a few clothing items and VYBE will help you explore
+            outfit combinations.
+          </Text>
+        </View>
+
+        {/* Future feature preview */}
+        <View style={styles.note}>
+          <Text style={styles.noteTitle}>STYLE THAT LEARNS WITH YOU</Text>
+          <Text style={styles.noteText}>
+            Personalised styling and smarter recommendations are part
+            of the VYBE journey.
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F7F6F2',
+  },
+  content: {
+    paddingHorizontal: 22,
+    paddingTop: 58,
+    paddingBottom: 40,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 42,
+  },
+  logo: {
+    fontSize: 30,
+    fontWeight: '900',
+    letterSpacing: 4,
+    color: '#24251F',
+  },
+  tagline: {
+    fontSize: 9,
+    letterSpacing: 2,
+    color: '#77796D',
+    marginTop: 4,
+  },
+  profileCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#E4E7D9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileText: {
+    color: '#38412D',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  welcome: {
+    marginBottom: 25,
+  },
+  eyebrow: {
+    color: '#747A55',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 2,
+    marginBottom: 15,
+  },
+  heading: {
+    fontSize: 38,
+    lineHeight: 44,
+    fontWeight: '700',
+    color: '#25261F',
+  },
+  headingAccent: {
+    fontSize: 38,
+    lineHeight: 44,
+    fontWeight: '700',
+    color: '#78815D',
+  },
+  description: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: '#77786E',
+    marginTop: 13,
+    maxWidth: 290,
+  },
+  primaryButton: {
+    backgroundColor: '#333C2B',
+    borderRadius: 14,
+    paddingVertical: 17,
+    alignItems: 'center',
+    marginBottom: 34,
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  sectionTitle: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#282920',
+  },
+  mutedText: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1.3,
+    color: '#898A7D',
+  },
+  summaryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 23,
+    alignItems: 'center',
+    marginBottom: 32,
+    borderWidth: 1,
+    borderColor: '#EBEAE3',
+  },
+  summaryIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#EEF0E6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  iconText: {
+    fontSize: 25,
+    color: '#68744D',
+  },
+  summaryNumber: {
+    fontSize: 21,
+    fontWeight: '700',
+    color: '#292A23',
+  },
+  summaryDescription: {
+    textAlign: 'center',
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#818176',
+    marginTop: 8,
+  },
+  recommendationCard: {
+    backgroundColor: '#E9EBDD',
+    borderRadius: 18,
+    padding: 21,
+    marginBottom: 25,
+  },
+  recommendationIcon: {
+    width: 43,
+    height: 43,
+    borderRadius: 14,
+    backgroundColor: '#D7DDC7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 15,
+  },
+  outfitIcon: {
+    fontSize: 24,
+    color: '#48533A',
+  },
+  recommendationTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#303628',
+    marginBottom: 8,
+  },
+  recommendationDescription: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#626854',
+  },
+  note: {
+    padding: 18,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#E5E3D9',
+    marginBottom: 10,
+  },
+  noteTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    color: '#727951',
+    marginBottom: 8,
+  },
+  noteText: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#77786E',
+  },
+  imagePreviewCard: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 18,
+  padding: 18,
+  marginBottom: 28,
+  alignItems: 'center',
+  borderWidth: 1,
+  borderColor: '#EBEAE3',
+},
+imagePreviewTitle: {
+  fontSize: 16,
+  fontWeight: '700',
+  color: '#282920',
+  marginBottom: 15,
+},
+selectedImage: {
+  width: 220,
+  height: 260,
+  borderRadius: 12,
+},
+imagePreviewNote: {
+  fontSize: 13,
+  color: '#68744D',
+  marginTop: 12,
+},
+input: {
+  width: '100%',
+  borderWidth: 1,
+  borderColor: '#DDDFD4',
+  borderRadius: 10,
+  padding: 13,
+  marginTop: 12,
+  fontSize: 14,
+  color: '#282920',
+  backgroundColor: '#FFFFFF',
+},
+saveButton: {
+  backgroundColor: '#333C2B',
+  borderRadius: 12,
+  paddingVertical: 15,
+  paddingHorizontal: 25,
+  marginTop: 18,
+  width: '100%',
+  alignItems: 'center',
+},
+saveButtonText: {
+  color: '#FFFFFF',
+  fontSize: 15,
+  fontWeight: '600',
+},
+wardrobeItemCard: {
+  flexDirection: 'row',
+  backgroundColor: '#FFFFFF',
+  borderRadius: 15,
+  padding: 12,
+  marginBottom: 12,
+  borderWidth: 1,
+  borderColor: '#EBEAE3',
+},
+wardrobeItemImage: {
+  width: 90,
+  height: 100,
+  borderRadius: 10,
+},
+wardrobeItemDetails: {
+  flex: 1,
+  paddingLeft: 15,
+  justifyContent: 'center',
+},
+wardrobeItemName: {
+  fontSize: 16,
+  fontWeight: '700',
+  color: '#282920',
+  marginBottom: 7,
+},
+wardrobeItemText: {
+  fontSize: 13,
+  color: '#77786E',
+  marginBottom: 4,
+},
+});
