@@ -1,22 +1,44 @@
 
 import { StyleSheet, Text, View, ScrollView, Pressable, Image, TextInput, Alert, } from 'react-native';
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
+import { API_URL } from '../config/api';
 
 type ClothingItem = {
-  id: string;
-  image: string;
+  _id?: string;
   name: string;
   category: string;
   color: string;
+  imageUrl?: string;
+  imageUri?: string;
 };
+
 export default function HomeScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [clothingName, setClothingName] = useState('');
   const [category, setCategory] = useState('');
   const [color, setColor] = useState('');
   const [wardrobe, setWardrobe] = useState<ClothingItem[]>([]);
+  const [loadingWardrobe, setLoadingWardrobe] = useState(false);
+  const fetchWardrobe = async () => {
+      try {
+        setLoadingWardrobe(true);
+        const response = await fetch(`${API_URL}/api/garments`);
+        if (!response.ok) {
+          throw new Error('Failed to load wardrobe');
+        }
+        const data = await response.json();
+        setWardrobe(data.garments);
+      } catch (error) {
+        console.log('Wardrobe fetch error:', error);
+        Alert.alert('Error', 'Could not load your wardrobe');
+      } finally {setLoadingWardrobe(false);
+      }
+    };
+  useEffect(() => {
+  fetchWardrobe();
+}, []);
 
 
   const openGallery = async () => {
@@ -37,12 +59,12 @@ export default function HomeScreen() {
   }
 
   const newItem: ClothingItem = {
-    id: Date.now().toString(),
-    image: selectedImage,
-    name: clothingName.trim(),
-    category: category.trim(),
-    color: color.trim(),
-  };
+  _id: Date.now().toString(),
+  imageUri: selectedImage,
+  name: clothingName.trim(),
+  category: category.trim(),
+  color: color.trim(),
+};
 
   setWardrobe((currentWardrobe) => [...currentWardrobe, newItem]);
 
@@ -145,9 +167,9 @@ export default function HomeScreen() {
           </Text>
         </View>
         {wardrobe.map((item) => (
-  <View key={item.id} style={styles.wardrobeItemCard}>
+  <View key={item._id} style={styles.wardrobeItemCard}>
     <Image
-      source={{ uri: item.image }}
+      source={{ uri: item.imageUrl || item.imageUri }}
       style={styles.wardrobeItemImage}
     />
 
