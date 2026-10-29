@@ -142,14 +142,100 @@ app.post('/api/upload', (req, res) => {
         imageUrl: result.secure_url,
       });
     } catch (error) {
-      console.error('Cloudinary upload failed:', error.message);
+  console.error('Cloudinary upload error:', error);
 
-      res.status(500).json({
+  return res.status(500).json({
+    success: false,
+    message: 'Image upload failed',
+  });
+}
+  });
+});
+
+app.delete('/api/garments/:id', async (req, res) => {
+  try {
+    const deletedGarment = await Garment.findByIdAndDelete(req.params.id);
+
+    if (!deletedGarment) {
+      return res.status(404).json({
         success: false,
-        message: 'Image upload failed',
+        message: 'Garment not found',
       });
     }
-  });
+
+    res.json({
+      success: true,
+      message: 'Garment deleted successfully!',
+    });
+  } catch (error) {
+    console.error('Delete garment error:', error);
+
+    res.status(400).json({
+      success: false,
+      message: 'Unable to delete garment',
+    });
+  }
+});
+
+app.get('/api/outfits/recommend', async (req, res) => {
+  try {
+    const garments = await Garment.find();
+
+    const tops = garments.filter((item) =>
+      ['shirt', 't-shirt', 'tshirt', 'top', 'hoodie', 'sweater']
+        .includes(item.category.toLowerCase().trim())
+    );
+
+    const bottoms = garments.filter((item) =>
+      ['jeans', 'pants', 'trousers', 'shorts', 'skirt']
+        .includes(item.category.toLowerCase().trim())
+    );
+
+    const shoes = garments.filter((item) =>
+      ['shoes', 'sneakers', 'boots', 'sandals']
+        .includes(item.category.toLowerCase().trim())
+    );
+
+    if (tops.length === 0 || bottoms.length === 0) {
+      return res.json({
+        success: true,
+        message: 'Add at least one top and one bottom to get outfit recommendations.',
+        outfits: [],
+      });
+    }
+
+    const outfits = [];
+
+    for (const top of tops) {
+      for (const bottom of bottoms) {
+        const outfit = {
+          title: 'Everyday Outfit',
+          top,
+          bottom,
+          shoes: shoes.length > 0 ? shoes[0] : null,
+        };
+
+        outfits.push(outfit);
+
+        if (outfits.length >= 5) break;
+      }
+
+      if (outfits.length >= 5) break;
+    }
+
+    res.json({
+      success: true,
+      count: outfits.length,
+      outfits,
+    });
+  } catch (error) {
+    console.error('Outfit recommendation error:', error);
+
+    res.status(500).json({
+      success: false,
+      message: 'Unable to generate outfit recommendations',
+    });
+  }
 });
 
 // Handle API routes that do not exist.

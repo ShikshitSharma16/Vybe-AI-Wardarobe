@@ -1,4 +1,4 @@
-
+import { File } from 'expo-file-system';
 import { StyleSheet, Text, View, ScrollView, Pressable, Image, TextInput, Alert, } from 'react-native';
 import {useEffect, useState} from 'react';
 import { StatusBar } from 'expo-status-bar';
@@ -14,12 +14,20 @@ type ClothingItem = {
   imageUri?: string;
 };
 
+type Outfit = {
+  title: string;
+  top: ClothingItem;
+  bottom: ClothingItem;
+  shoes: ClothingItem | null;
+};
+
 export default function HomeScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [clothingName, setClothingName] = useState('');
   const [category, setCategory] = useState('');
   const [color, setColor] = useState('');
   const [wardrobe, setWardrobe] = useState<ClothingItem[]>([]);
+  const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loadingWardrobe, setLoadingWardrobe] = useState(false);
   const fetchWardrobe = async () => {
       try {
@@ -36,10 +44,67 @@ export default function HomeScreen() {
       } finally {setLoadingWardrobe(false);
       }
     };
-  useEffect(() => {
+
+const fetchOutfits = async () => {
+  try {
+    const response = await fetch(`${API_URL}/api/outfits/recommend`);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch outfits');
+    }
+
+    const data = await response.json();
+
+    setOutfits(data.outfits);
+  } catch (error) {
+    console.log('Outfit fetch error:', error);
+  }
+};
+
+useEffect(() => {
   fetchWardrobe();
+  fetchOutfits();
 }, []);
 
+const deleteClothing = (id: string) => {
+  Alert.alert(
+    'Delete clothing item?',
+    'This item will be permanently removed from your wardrobe.',
+    [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const response = await fetch(
+              `${API_URL}/api/garments/${id}`,
+              {
+                method: 'DELETE',
+              }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+              throw new Error(data.message || 'Delete failed');
+            }
+
+            await fetchWardrobe();
+
+            Alert.alert('Deleted', 'Clothing item removed successfully!');
+          } catch (error) {
+            console.log('Delete clothing error:', error);
+            Alert.alert('Error', 'Could not delete clothing item');
+          }
+        },
+      },
+    ]
+  );
+};
 
   const openGallery = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -52,29 +117,91 @@ export default function HomeScreen() {
       setSelectedImage(result.assets[0].uri);
     }
   };
-  const saveClothing = () => {
-  if (!selectedImage || !clothingName.trim() || !category.trim() || !color.trim()) {
-    Alert.alert('Missing details', 'Please select a photo and fill in all fields.');
-    return;
-  }
 
-  const newItem: ClothingItem = {
-  _id: Date.now().toString(),
-  imageUri: selectedImage,
-  name: clothingName.trim(),
-  category: category.trim(),
-  color: color.trim(),
+  const [savingClothing, setSavingClothing] = useState(false);
+
+  const saveClothing = async () => {
+    if (!selectedImage || !clothingName.trim() || !category.trim() || !color.trim()) {
+      Alert.alert('Missing details', 'Please select a photo and fill in all fields.');
+      return;
+    }
+
+    if (savingClothing) return;
+
+    try {
+      setSavingClothing(true);
+
+    // Step 1: Prepare the image for upload
+   const imageResponse = await fetch(selectedImage);
+  // Read the selected image as a real file
+const imageFile = new File(selectedImage);
+
+// Prepare the image upload
+const formData = new FormData();
+
+// Add the actual image file to the request
+formData.append('image', imageFile);
+
+// Send the image to our Express backend
+const uploadResponse = await fetch(`${API_URL}/api/upload`, {
+  method: 'POST',
+  body: formData,
+});
+
+    const uploadData = await uploadResponse.json();
+    console.log('Upload status:', uploadResponse.status);
+    console.log('Upload response:', uploadData);
+
+    if (!uploadResponse.ok || !uploadData.success) {
+  throw new Error(
+    `Upload failed (${uploadResponse.status}): ${
+      uploadData.message || 'No error details returned'
+    }`
+  );
+}
+
+    // Step 3: Save garment details in MongoDB
+    const garmentResponse = await fetch(`${API_URL}/api/garments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: clothingName.trim(),
+        category: category.trim(),
+        color: color.trim(),
+        imageUrl: uploadData.imageUrl,
+      }),
+    });
+
+    const garmentData = await garmentResponse.json();
+
+    if (!garmentResponse.ok || !garmentData.success) {
+      throw new Error(garmentData.message || 'Failed to save garment');
+    }
+
+    // Step 4: Clear the form
+    setSelectedImage(null);
+    setClothingName('');
+    setCategory('');
+    setColor('');
+
+    // Step 5: Reload garments from MongoDB
+    await fetchWardrobe();
+
+    Alert.alert('Success', 'Your clothing item was saved permanently!');
+    } catch (error) {
+      console.log('Save clothing error:', error);
+
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'Could not save clothing item'
+      );
+    } finally {
+      setSavingClothing(false);
+    }
 };
 
-  setWardrobe((currentWardrobe) => [...currentWardrobe, newItem]);
-
-  setSelectedImage(null);
-  setClothingName('');
-  setCategory('');
-  setColor('');
-
-  Alert.alert('Success', 'Clothing item added to your wardrobe!');
-};
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
@@ -143,10 +270,16 @@ export default function HomeScreen() {
             onChangeText={setColor}
           />
 
-          <Pressable style={styles.saveButton} onPress={saveClothing}>
-            <Text style={styles.saveButtonText}>Save to Wardrobe</Text>
-            </Pressable>
-          </View>
+          <Pressable
+              style={styles.saveButton}
+              onPress={saveClothing}
+              disabled={savingClothing}
+          >
+          <Text style={styles.saveButtonText}>
+          {savingClothing ? 'Saving...' : 'Save to Wardrobe'}
+        </Text>
+      </Pressable>
+      </View>
         )}
 
         {/* Wardrobe summary */}
@@ -177,9 +310,18 @@ export default function HomeScreen() {
       <Text style={styles.wardrobeItemName}>{item.name}</Text>
       <Text style={styles.wardrobeItemText}>Category: {item.category}</Text>
       <Text style={styles.wardrobeItemText}>Color: {item.color}</Text>
+      {item._id && (
+        <Pressable
+          style={styles.deleteButton}
+          onPress={() => deleteClothing(item._id!)}
+        >
+        <Text style={styles.deleteButtonText}>Delete</Text>
+        </Pressable>
+      )}
     </View>
   </View>
 ))}
+
 
         {/* Outfit recommendations */}
         <View style={styles.sectionHeader}>
@@ -191,6 +333,47 @@ export default function HomeScreen() {
           <View style={styles.recommendationIcon}>
             <Text style={styles.outfitIcon}>◈</Text>
           </View>
+          {outfits.map((outfit, index) => (
+  <View key={index} style={styles.outfitCard}>
+    <Text style={styles.outfitTitle}>
+      Outfit {index + 1}: {outfit.title}
+    </Text>
+
+    <View style={styles.outfitImages}>
+      <View style={styles.outfitPiece}>
+        <Image
+          source={{ uri: outfit.top.imageUrl }}
+          style={styles.outfitImage}
+        />
+        <Text style={styles.outfitItemName}>
+          {outfit.top.name}
+        </Text>
+      </View>
+
+      <View style={styles.outfitPiece}>
+        <Image
+          source={{ uri: outfit.bottom.imageUrl }}
+          style={styles.outfitImage}
+        />
+        <Text style={styles.outfitItemName}>
+          {outfit.bottom.name}
+        </Text>
+      </View>
+
+      {outfit.shoes && (
+        <View style={styles.outfitPiece}>
+          <Image
+            source={{ uri: outfit.shoes.imageUrl }}
+            style={styles.outfitImage}
+          />
+          <Text style={styles.outfitItemName}>
+            {outfit.shoes.name}
+          </Text>
+        </View>
+      )}
+    </View>
+  </View>
+))}
 
           <Text style={styles.recommendationTitle}>
             Your next look starts here
@@ -476,4 +659,59 @@ wardrobeItemText: {
   color: '#77786E',
   marginBottom: 4,
 },
+deleteButton: {
+  marginTop: 10,
+  paddingVertical: 8,
+  paddingHorizontal: 12,
+  backgroundColor: '#FCE8E6',
+  borderRadius: 8,
+  alignSelf: 'flex-start',
+},
+
+deleteButtonText: {
+  color: '#B42318',
+  fontSize: 13,
+  fontWeight: '600',
+},
+
+outfitCard: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 18,
+  padding: 16,
+  marginBottom: 15,
+  borderWidth: 1,
+  borderColor: '#EBEAE3',
+},
+
+outfitTitle: {
+  fontSize: 16,
+  fontWeight: '700',
+  color: '#282920',
+  marginBottom: 14,
+},
+
+outfitImages: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+},
+
+outfitPiece: {
+  width: '31%',
+  alignItems: 'center',
+},
+
+outfitImage: {
+  width: '100%',
+  height: 110,
+  borderRadius: 10,
+  backgroundColor: '#EEF0E6',
+},
+
+outfitItemName: {
+  fontSize: 12,
+  color: '#555A4A',
+  textAlign: 'center',
+  marginTop: 8,
+},
+
 });
