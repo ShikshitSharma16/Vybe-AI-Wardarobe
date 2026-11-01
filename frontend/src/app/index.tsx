@@ -12,6 +12,8 @@ type ClothingItem = {
   color: string;
   imageUrl?: string;
   imageUri?: string;
+  wearCount?: number;
+  lastWornAt?: string | null;
 };
 
 type Outfit = {
@@ -19,6 +21,18 @@ type Outfit = {
   top: ClothingItem;
   bottom: ClothingItem;
   shoes: ClothingItem | null;
+};
+
+const formatLastWorn = (lastWornAt?: string | null) => {
+  if (!lastWornAt) return 'Never worn';
+
+  const date = new Date(lastWornAt);
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Date unavailable';
+  }
+
+  return date.toLocaleDateString();
 };
 
 export default function HomeScreen() {
@@ -29,6 +43,34 @@ export default function HomeScreen() {
   const [wardrobe, setWardrobe] = useState<ClothingItem[]>([]);
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loadingWardrobe, setLoadingWardrobe] = useState(false);
+  const [markingGarmentId, setMarkingGarmentId] = useState<string | null>(null);
+
+  const totalWears = wardrobe.reduce(
+    (total, item) => total + (item.wearCount ?? 0),
+    0
+  );
+
+  const neverWornCount = wardrobe.filter(
+    (item) => (item.wearCount ?? 0) === 0
+  ).length;
+
+  const mostWornGarment = wardrobe.reduce<ClothingItem | null>(
+    (mostWorn, item) => {
+      const itemWearCount = item.wearCount ?? 0;
+
+      if (itemWearCount === 0) {
+        return mostWorn;
+      }
+
+      if (!mostWorn || itemWearCount > (mostWorn.wearCount ?? 0)) {
+        return item;
+      }
+
+      return mostWorn;
+    },
+    null
+  );
+
   const fetchWardrobe = async () => {
       try {
         setLoadingWardrobe(true);
@@ -94,8 +136,9 @@ const deleteClothing = (id: string) => {
             }
 
             await fetchWardrobe();
+            await fetchOutfits();
 
-            Alert.alert('Deleted', 'Clothing item removed successfully!');
+           Alert.alert('Deleted', 'Clothing item removed successfully!');
           } catch (error) {
             console.log('Delete clothing error:', error);
             Alert.alert('Error', 'Could not delete clothing item');
@@ -104,6 +147,35 @@ const deleteClothing = (id: string) => {
       },
     ]
   );
+};
+
+const markAsWorn = async (id: string) => {
+  if (markingGarmentId === id) return;
+
+  try {
+    setMarkingGarmentId(id);
+
+    const response = await fetch(`${API_URL}/api/garments/${id}/wear`, {
+      method: 'PATCH',
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'Could not mark garment as worn');
+    }
+
+    await fetchWardrobe();
+    Alert.alert('Updated', 'Garment marked as worn!');
+  } catch (error) {
+    console.log('Mark as worn error:', error);
+    Alert.alert(
+      'Error',
+      error instanceof Error ? error.message : 'Could not mark garment as worn'
+    );
+  } finally {
+    setMarkingGarmentId(null);
+  }
 };
 
   const openGallery = async () => {
@@ -187,7 +259,9 @@ const uploadResponse = await fetch(`${API_URL}/api/upload`, {
     setColor('');
 
     // Step 5: Reload garments from MongoDB
+    // Reload wardrobe and outfit recommendations
     await fetchWardrobe();
+    await fetchOutfits();
 
     Alert.alert('Success', 'Your clothing item was saved permanently!');
     } catch (error) {
@@ -299,6 +373,20 @@ const uploadResponse = await fetch(`${API_URL}/api/upload`, {
             {'\n'}Add your clothes to get started.
           </Text>
         </View>
+
+        <View style={styles.analyticsCard}>
+          <Text style={styles.analyticsTitle}>Wardrobe analytics</Text>
+          <Text style={styles.analyticsText}>Total items: {wardrobe.length}</Text>
+          <Text style={styles.analyticsText}>Total wears: {totalWears}</Text>
+          <Text style={styles.analyticsText}>Never worn: {neverWornCount}</Text>
+          <Text style={styles.analyticsText}>
+            Most worn:{' '}
+            {mostWornGarment
+              ? `${mostWornGarment.name} (${mostWornGarment.wearCount ?? 0} wears)`
+              : 'No worn garments yet'}
+          </Text>
+        </View>
+
         {wardrobe.map((item) => (
   <View key={item._id} style={styles.wardrobeItemCard}>
     <Image
@@ -310,13 +398,31 @@ const uploadResponse = await fetch(`${API_URL}/api/upload`, {
       <Text style={styles.wardrobeItemName}>{item.name}</Text>
       <Text style={styles.wardrobeItemText}>Category: {item.category}</Text>
       <Text style={styles.wardrobeItemText}>Color: {item.color}</Text>
+      <Text style={styles.wardrobeItemText}>Worn: {item.wearCount ?? 0} times</Text>
+      <Text style={styles.wardrobeItemText}>
+        Last worn: {formatLastWorn(item.lastWornAt)}
+      </Text>
       {item._id && (
-        <Pressable
-          style={styles.deleteButton}
-          onPress={() => deleteClothing(item._id!)}
-        >
-        <Text style={styles.deleteButtonText}>Delete</Text>
-        </Pressable>
+        <>
+          <Pressable
+            style={[
+              styles.wearButton,
+              markingGarmentId === item._id && styles.wearButtonDisabled,
+            ]}
+            onPress={() => markAsWorn(item._id!)}
+            disabled={markingGarmentId === item._id}
+          >
+            <Text style={styles.wearButtonText}>
+              {markingGarmentId === item._id ? 'Marking...' : 'Mark as Worn'}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={styles.deleteButton}
+            onPress={() => deleteClothing(item._id!)}
+          >
+            <Text style={styles.deleteButtonText}>Delete</Text>
+          </Pressable>
+        </>
       )}
     </View>
   </View>
@@ -659,6 +765,41 @@ wardrobeItemText: {
   color: '#77786E',
   marginBottom: 4,
 },
+  analyticsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 18,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#EBEAE3',
+  },
+  analyticsTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#282920',
+    marginBottom: 10,
+  },
+  analyticsText: {
+    fontSize: 14,
+    color: '#555A4A',
+    marginBottom: 6,
+  },
+  wearButton: {
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#E9EBDD',
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  wearButtonDisabled: {
+    opacity: 0.6,
+  },
+  wearButtonText: {
+    color: '#48533A',
+    fontSize: 13,
+    fontWeight: '600',
+  },
 deleteButton: {
   marginTop: 10,
   paddingVertical: 8,

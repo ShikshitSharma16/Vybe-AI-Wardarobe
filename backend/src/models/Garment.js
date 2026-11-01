@@ -24,6 +24,17 @@ const garmentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+
+    wearCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    lastWornAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

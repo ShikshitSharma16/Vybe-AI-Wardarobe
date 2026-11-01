@@ -4,7 +4,7 @@ import 'dotenv/config';
 import dns from 'node:dns';
 import Garment from './models/Garment.js';
 import multer from 'multer';
-import cloudinary from './config/cloudinary.js';
+import cloudinary, { validateCloudinaryConfig } from './config/cloudinary.js';
 
 // Use Google's DNS for MongoDB Atlas SRV lookups
 dns.setServers(['8.8.8.8']);
@@ -142,14 +142,74 @@ app.post('/api/upload', (req, res) => {
         imageUrl: result.secure_url,
       });
     } catch (error) {
-  console.error('Cloudinary upload error:', error);
+      const statusCode = error.http_code || error.statusCode;
+      const errorCode = error.code;
+      const errorMessage = error.message || '';
+      const isAuthenticationError =
+        statusCode === 401 ||
+        statusCode === 403 ||
+        /auth|api key|signature|credential/i.test(errorMessage);
+      const isConnectivityError =
+        /ECONN|ENOTFOUND|ETIMEDOUT|network|socket/i.test(
+          `${errorCode || ''} ${errorMessage}`
+        );
 
-  return res.status(500).json({
-    success: false,
-    message: 'Image upload failed',
+      console.error('Cloudinary upload failed', {
+        category: isAuthenticationError
+          ? 'authentication'
+          : isConnectivityError
+            ? 'connectivity'
+            : 'other',
+        statusCode: statusCode || 'not provided',
+        errorCode: errorCode || 'not provided',
+      });
+
+      return res.status(500).json({
+        success: false,
+        message: 'Image upload failed',
+      });
+    }
   });
-}
-  });
+});
+
+// Mark a clothing item as worn
+app.patch('/api/garments/:id/wear', async (req, res) => {
+  try {
+    const garment = await Garment.findByIdAndUpdate(
+      req.params.id,
+      {
+        $inc: { wearCount: 1 },
+        $set: { lastWornAt: new Date() },
+      },
+      { returnDocument: 'after', runValidators: true }
+    );
+
+    if (!garment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Garment not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Garment marked as worn',
+      garment,
+    });
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid garment ID',
+      });
+    }
+
+    console.error('Mark as worn error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Unable to mark garment as worn',
+    });
+  }
 });
 
 app.delete('/api/garments/:id', async (req, res) => {
@@ -205,22 +265,34 @@ app.get('/api/outfits/recommend', async (req, res) => {
     }
 
     const outfits = [];
+    const usedCombinations = new Set();
+    const shoeOptions = shoes.length > 0 ? shoes : [null];
 
+    outfitLoop:
     for (const top of tops) {
       for (const bottom of bottoms) {
-        const outfit = {
-          title: 'Everyday Outfit',
-          top,
-          bottom,
-          shoes: shoes.length > 0 ? shoes[0] : null,
-        };
+        for (const shoe of shoeOptions) {
+          const combinationKey = [top._id, bottom._id, shoe?._id || 'no-shoes']
+            .map(String)
+            .join('-');
 
-        outfits.push(outfit);
+          if (usedCombinations.has(combinationKey)) {
+            continue;
+          }
 
-        if (outfits.length >= 5) break;
+          usedCombinations.add(combinationKey);
+          outfits.push({
+            title: 'Everyday Outfit',
+            top,
+            bottom,
+            shoes: shoe,
+          });
+
+          if (outfits.length >= 5) {
+            break outfitLoop;
+          }
+        }
       }
-
-      if (outfits.length >= 5) break;
     }
 
     res.json({
@@ -248,6 +320,15 @@ app.use((req, res) => {
 
 // Start the backend server.
 const startServer = async () => {
+  const missingCloudinaryVariables = validateCloudinaryConfig();
+
+  if (missingCloudinaryVariables.length > 0) {
+    console.error(
+      'Backend cannot start: required Cloudinary configuration is missing.'
+    );
+    process.exit(1);
+  }
+
   await connectDB();
 
   app.listen(PORT, () => {
